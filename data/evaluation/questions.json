@@ -1,0 +1,89 @@
+{
+  "version": "v1",
+  "questions": [
+    {
+      "id": "q001",
+      "question": "Spring 事务失效的常见原因是什么？",
+      "expected_keywords": ["自调用", "代理", "事务传播"],
+      "expected_document_ids": ["doc_a3b81248fcd23568"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q002",
+      "question": "数据库连接池需要配置哪些参数？",
+      "expected_keywords": ["最大连接数", "最小空闲", "超时"],
+      "expected_document_ids": ["doc_71eaf1f9cf0da067"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q003",
+      "question": "HTTP 客户端的超时应该如何设置？",
+      "expected_keywords": ["连接超时", "读取超时"],
+      "expected_document_ids": ["doc_1b8b08d0ccdcb8dc"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q004",
+      "question": "自调用为什么不会开启事务？",
+      "expected_keywords": ["自调用", "代理"],
+      "expected_document_ids": ["doc_a3b81248fcd23568"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q005",
+      "question": "内容哈希没变时还要重新向量化吗？",
+      "expected_keywords": ["内容哈希", "跳过"],
+      "expected_document_ids": ["doc_0e3fa425d61a07da"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q006",
+      "question": "同一个类里的方法互相调用，声明式事务为什么没有包住这次调用？",
+      "expected_keywords": ["自调用", "代理"],
+      "expected_document_ids": ["doc_a3b81248fcd23568"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q007",
+      "question": "连接都借出去之后，新的数据库请求会怎样？",
+      "expected_keywords": ["池耗尽", "等待"],
+      "expected_document_ids": ["doc_71eaf1f9cf0da067"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q008",
+      "question": "切分长度是按 Token 计算的吗？",
+      "expected_keywords": ["字符", "重叠"],
+      "expected_document_ids": ["doc_224aac7e68c76b4e"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q009",
+      "question": "更新已入库的文档，以及回答里的引用标记，分别要注意什么？",
+      "expected_keywords": ["重新向量化", "不存在编号"],
+      "expected_document_ids": ["doc_0e3fa425d61a07da", "doc_a3fd2abecbef1ab3"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q010",
+      "question": "调用外部 HTTP 服务和向连接池借连接时，超时分别起什么作用？",
+      "expected_keywords": ["连接超时", "池耗尽"],
+      "expected_document_ids": ["doc_1b8b08d0ccdcb8dc", "doc_71eaf1f9cf0da067"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q011",
+      "question": "Kubernetes 滚动发布时如何设置就绪探针？",
+      "expected_keywords": [],
+      "expected_document_ids": [],
+      "expects_abstention": true
+    },
+    {
+      "id": "q012",
+      "question": "Redis 分布式锁应该如何设置过期时间？",
+      "expected_keywords": [],
+      "expected_document_ids": [],
+      "expects_abstention": true
+    }
+  ]
+}

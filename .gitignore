@@ -1,0 +1,19 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# 本地向量库数据。保留目录占位文件。
+data/chroma/**
+!data/chroma/.gitkeep
+data/evaluation/reports/**
+!data/evaluation/reports/.gitkeep
+
+*.log
