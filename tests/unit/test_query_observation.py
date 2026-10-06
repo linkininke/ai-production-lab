@@ -10,6 +10,7 @@ from app.core.exceptions import (
     EmbeddingError,
     LLMError,
     QuestionValidationError,
+    RerankerError,
     RetrievalError,
     VectorStoreError,
 )
@@ -23,6 +24,9 @@ from app.observability.records import classify_failure
         (EmbeddingError("Embedding 服务网络错误"), "interface", "upstream"),
         (EmbeddingError("Embedding 响应不是 JSON"), "interface", "upstream"),
         (EmbeddingError("模拟向量化失败"), "retrieval", "retrieval"),
+        (RerankerError("重排服务超时"), "interface", "timeout"),
+        (RerankerError("重排响应不是 JSON"), "interface", "upstream"),
+        (RerankerError("重排候选缺少正文"), "retrieval", "retrieval"),
         (RetrievalError("检索失败"), "retrieval", "retrieval"),
         (VectorStoreError("向量库读写失败"), "retrieval", "retrieval"),
         (LLMError("大模型服务超时"), "interface", "timeout"),

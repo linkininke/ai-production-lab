@@ -74,6 +74,13 @@ class LLMError(AppError):
     status_code = 502
 
 
+class RerankerError(AppError):
+    """重排服务调用失败。"""
+
+    code = "reranker_error"
+    status_code = 502
+
+
 class ContextOverflowError(AppError):
     """组装后的上下文超过允许长度。"""
 

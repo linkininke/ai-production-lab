@@ -15,5 +15,7 @@ data/chroma/**
 !data/chroma/.gitkeep
 data/evaluation/reports/**
 !data/evaluation/reports/.gitkeep
+evaluation_results/**
+!evaluation_results/.gitkeep
 
 *.log

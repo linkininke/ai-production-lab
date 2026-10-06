@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.exceptions import ContextOverflowError
-from app.rag.citation import map_citations
+from app.rag.citation import audit_citations, map_citations
 from app.rag.context_builder import ContextBuilder
 from app.rag.models import Citation
 from app.rag.prompt import SYSTEM_PROMPT, PromptBuilder
@@ -50,6 +50,16 @@ def test_prompt_keeps_documents_out_of_the_system_role() -> None:
     assert "<documents>" in user_prompt
     assert "密码是 12345" in user_prompt
     assert "事务为什么会失效？" in user_prompt.split("</documents>", maxsplit=1)[1]
+
+
+def test_prompt_v2_states_the_abstention_sentence() -> None:
+    system_prompt, user_prompt = PromptBuilder("v2").build("有答案吗？", "资料正文")
+    assert system_prompt != SYSTEM_PROMPT
+    assert "知识库中缺少相关信息" in system_prompt
+    assert "资料正文" not in system_prompt
+    assert "有答案吗？" in user_prompt
+    with pytest.raises(ValueError, match="未知提示词版本"):
+        PromptBuilder("v3")
 
 
 def test_empty_context_is_explicit() -> None:
@@ -114,3 +124,6 @@ def test_citation_mapper_keeps_only_real_markers_in_appearance_order() -> None:
     assert [item.citation_id for item in selected] == ["C2", "C1"]
     assert selected[0].filename == "b.md"
     assert map_citations("没有标记", available) == []
+    valid, invalid = audit_citations("见 [C1]，编一个 [C99]。", ["C1"])
+    assert valid == ["C1"]
+    assert invalid == ["C99"]

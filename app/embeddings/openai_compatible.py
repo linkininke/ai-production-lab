@@ -67,6 +67,7 @@ class OpenAICompatibleEmbeddingProvider:
             dimension=settings.embedding_dimension,
             timeout=settings.embedding_timeout,
             batch_size=settings.embedding_batch_size,
+            max_retries=settings.provider_max_retries,
         )
 
     @property

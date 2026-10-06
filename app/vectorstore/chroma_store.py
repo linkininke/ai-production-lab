@@ -167,33 +167,15 @@ class ChromaVectorStore:
             where={"document_id": document_id},
             include=["documents", "metadatas"],
         )
-        ids = result.get("ids") or []
-        documents = result.get("documents") or []
-        metadatas = result.get("metadatas") or []
-        if not (len(ids) == len(documents) == len(metadatas)):
-            raise VectorStoreError("向量记录字段数量不一致")
-        chunks: list[Chunk] = []
-        for chunk_id, text, metadata in zip(ids, documents, metadatas, strict=True):
-            if text is None or not isinstance(metadata, dict):
-                raise VectorStoreError("向量记录缺少文本或元数据")
-            stored = _metadata_map(metadata)
-            missing = [
-                key
-                for key in ("filename", "file_type", "chunk_index", "document_id")
-                if key not in stored
-            ]
-            if missing:
-                raise VectorStoreError("向量记录缺少元数据 " + ", ".join(missing))
-            chunks.append(
-                Chunk(
-                    chunk_id=str(chunk_id),
-                    document_id=str(stored["document_id"]),
-                    text=str(text),
-                    chunk_index=int(stored["chunk_index"]),
-                    metadata=stored,
-                )
-            )
-        chunks.sort(key=lambda chunk: chunk.chunk_index)
+        return _chunks_from_get(result)
+
+    def list_chunks(self) -> list[Chunk]:
+        collection = self._require_collection()
+        if collection.count() == 0:
+            return []
+        result = collection.get(include=["documents", "metadatas"])
+        chunks = _chunks_from_get(result)
+        chunks.sort(key=lambda chunk: (chunk.document_id, chunk.chunk_index, chunk.chunk_id))
         return chunks
 
     def list_documents(self) -> list[IndexedDocument]:
@@ -308,6 +290,40 @@ def _batch_size(client: ClientAPI | None) -> int:
         return max(1, int(client.get_max_batch_size()))
     except Exception:
         return 100
+
+
+def _chunks_from_get(result: dict[str, object]) -> list[Chunk]:
+    ids = result.get("ids") or []
+    documents = result.get("documents") or []
+    metadatas = result.get("metadatas") or []
+    columns = (ids, documents, metadatas)
+    if not all(isinstance(column, list) for column in columns):
+        raise VectorStoreError("向量记录字段数量不一致")
+    if not (len(ids) == len(documents) == len(metadatas)):
+        raise VectorStoreError("向量记录字段数量不一致")
+    chunks: list[Chunk] = []
+    for chunk_id, text, metadata in zip(ids, documents, metadatas, strict=True):
+        if text is None or not isinstance(metadata, dict):
+            raise VectorStoreError("向量记录缺少文本或元数据")
+        stored = _metadata_map(metadata)
+        missing = [
+            key
+            for key in ("filename", "file_type", "chunk_index", "document_id")
+            if key not in stored
+        ]
+        if missing:
+            raise VectorStoreError("向量记录缺少元数据 " + ", ".join(missing))
+        chunks.append(
+            Chunk(
+                chunk_id=str(chunk_id),
+                document_id=str(stored["document_id"]),
+                text=str(text),
+                chunk_index=int(stored["chunk_index"]),
+                metadata=stored,
+            )
+        )
+    chunks.sort(key=lambda chunk: chunk.chunk_index)
+    return chunks
 
 
 def _aligned_rows(

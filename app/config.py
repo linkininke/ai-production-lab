@@ -36,6 +36,17 @@ _ENV_LABELS = {
     "max_question_chars": "MAX_QUESTION_CHARS",
     "max_context_chars": "MAX_CONTEXT_CHARS",
     "retrieval_max_distance": "RETRIEVAL_MAX_DISTANCE",
+    "hybrid_vector_top_k": "HYBRID_VECTOR_TOP_K",
+    "hybrid_bm25_top_k": "HYBRID_BM25_TOP_K",
+    "hybrid_final_top_k": "HYBRID_FINAL_TOP_K",
+    "rrf_k": "RRF_K",
+    "reranker_timeout": "RERANKER_TIMEOUT",
+    "reranker_candidate_top_k": "RERANKER_CANDIDATE_TOP_K",
+    "reranker_final_top_k": "RERANKER_FINAL_TOP_K",
+    "llm_input_price_per_1m": "LLM_INPUT_PRICE_PER_1M",
+    "llm_output_price_per_1m": "LLM_OUTPUT_PRICE_PER_1M",
+    "embedding_price_per_1m": "EMBEDDING_PRICE_PER_1M",
+    "reranker_price_per_1k": "RERANKER_PRICE_PER_1K",
     "max_upload_size_mb": "MAX_UPLOAD_SIZE_MB",
     "chroma_collection": "CHROMA_COLLECTION",
     "evaluation_dataset_path": "EVALUATION_DATASET_PATH",
@@ -94,11 +105,51 @@ class Settings(BaseSettings):
     max_context_chars: int = Field(default=12000, ge=1)
     # 空值表示不按距离过滤。这是余弦距离上限，不是相似度下限。
     retrieval_max_distance: float | None = Field(default=None, ge=0)
+    # 混合检索的候选数量可以大于最终条数。RRF 只使用名次。
+    hybrid_vector_top_k: int = Field(default=20, ge=1)
+    hybrid_bm25_top_k: int = Field(default=20, ge=1)
+    hybrid_final_top_k: int = Field(default=10, ge=1)
+    rrf_k: int = Field(default=60, ge=0)
+    # 默认关闭。开启后才创建重排客户端，且不使用 MockReranker。
+    reranker_enabled: bool = False
+    reranker_base_url: str = ""
+    reranker_api_key: SecretStr = SecretStr("")
+    reranker_model: str = ""
+    reranker_timeout: float = Field(default=60, gt=0)
+    reranker_candidate_top_k: int = Field(default=20, ge=1)
+    reranker_final_top_k: int = Field(default=5, ge=1)
+    # 留空表示不估算费用。没有 Token 用量时结果仍是 null，不用价格表编造成本。
+    llm_input_price_per_1m: float | None = Field(default=None, ge=0)
+    llm_output_price_per_1m: float | None = Field(default=None, ge=0)
+    embedding_price_per_1m: float | None = Field(default=None, ge=0)
+    reranker_price_per_1k: float | None = Field(default=None, ge=0)
     max_upload_size_mb: int = Field(default=10, ge=1)
 
     evaluation_dataset_path: str = "./data/evaluation/questions.json"
     evaluation_corpus_dir: str = "./data/evaluation/corpus"
     evaluation_reports_dir: str = "./data/evaluation/reports"
+    # mock 不调用模型，也不产生正确性分数。llm 才调用对话模型，并且仍不是标准答案。
+    judge_mode: str = "mock"
+    judge_max_retries: int = Field(default=1, ge=0, le=2)
+    # 三个外部客户端共用。0 表示不重试。上限避免无限重试。
+    provider_max_retries: int = Field(default=2, ge=0, le=3)
+    evaluation_max_cases: int | None = Field(default=None, ge=1)
+    evaluation_max_cost: float | None = Field(default=None, ge=0)
+    budget_prompt_tokens: int | None = Field(default=None, ge=0)
+    budget_completion_tokens: int | None = Field(default=None, ge=0)
+    budget_embedding_tokens: int | None = Field(default=None, ge=0)
+    quality_gate_recall_at_5: float | None = Field(default=None, ge=0, le=1)
+    quality_gate_citation_validity: float | None = Field(default=None, ge=0, le=1)
+    quality_gate_groundedness: float | None = Field(default=None, ge=0, le=4)
+    quality_gate_p95_ms: float | None = Field(default=None, ge=0)
+    slo_success_rate: float | None = Field(default=None, ge=0, le=1)
+    slo_p95_latency_ms: float | None = Field(default=None, ge=0)
+    slo_citation_validity: float | None = Field(default=None, ge=0, le=1)
+    # 健康卡警告。留空表示不因为这项把状态降为 WARNING。不要在页面里写死比例。
+    health_p95_increase_ratio: float | None = Field(default=None, ge=0)
+    health_cost_increase_ratio: float | None = Field(default=None, ge=0)
+    health_quality_drop: float | None = Field(default=None, ge=0, le=1)
+    health_failure_rate_maximum: float | None = Field(default=None, ge=0, le=1)
 
     @field_validator(
         "app_host",
@@ -106,10 +157,13 @@ class Settings(BaseSettings):
         "llm_model",
         "embedding_base_url",
         "embedding_model",
+        "reranker_base_url",
+        "reranker_model",
         "chroma_persist_dir",
         "evaluation_dataset_path",
         "evaluation_corpus_dir",
         "evaluation_reports_dir",
+        "judge_mode",
         mode="before",
     )
     @classmethod
@@ -125,7 +179,31 @@ class Settings(BaseSettings):
             raise ValueError("APP_HOST 不能为空")
         return value
 
-    @field_validator("embedding_dimension", "retrieval_max_distance", mode="before")
+    @field_validator(
+        "embedding_dimension",
+        "retrieval_max_distance",
+        "llm_input_price_per_1m",
+        "llm_output_price_per_1m",
+        "embedding_price_per_1m",
+        "reranker_price_per_1k",
+        "evaluation_max_cases",
+        "evaluation_max_cost",
+        "budget_prompt_tokens",
+        "budget_completion_tokens",
+        "budget_embedding_tokens",
+        "quality_gate_recall_at_5",
+        "quality_gate_citation_validity",
+        "quality_gate_groundedness",
+        "quality_gate_p95_ms",
+        "slo_success_rate",
+        "slo_p95_latency_ms",
+        "slo_citation_validity",
+        "health_p95_increase_ratio",
+        "health_cost_increase_ratio",
+        "health_quality_drop",
+        "health_failure_rate_maximum",
+        mode="before",
+    )
     @classmethod
     def blank_optional_number_is_none(cls, value: object) -> object:
         if value is None or (isinstance(value, str) and value.strip() == ""):
@@ -151,6 +229,14 @@ class Settings(BaseSettings):
         if not value.strip():
             raise ValueError("评测路径不能为空")
         return value
+
+    @field_validator("judge_mode")
+    @classmethod
+    def judge_mode_is_known(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if cleaned not in {"mock", "llm"}:
+            raise ValueError("JUDGE_MODE 只能是 mock 或 llm")
+        return cleaned
 
     @field_validator("chroma_collection")
     @classmethod
@@ -194,6 +280,27 @@ class Settings(BaseSettings):
             missing = [name for name, item in required.items() if item in (None, "")]
             if missing:
                 raise ValueError("ENABLE_EXTERNAL_MODELS=true 时缺少配置：" + ", ".join(missing))
+        if self.reranker_candidate_top_k < self.reranker_final_top_k:
+            raise ValueError(
+                "RERANKER_CANDIDATE_TOP_K 不能小于 RERANKER_FINAL_TOP_K"
+                f"（当前 RERANKER_CANDIDATE_TOP_K={self.reranker_candidate_top_k}，"
+                f"RERANKER_FINAL_TOP_K={self.reranker_final_top_k}）"
+            )
+        if self.reranker_enabled:
+            reranker_required: dict[str, object] = {
+                "RERANKER_BASE_URL": self.reranker_base_url,
+                "RERANKER_API_KEY": self.reranker_api_key.get_secret_value(),
+                "RERANKER_MODEL": self.reranker_model,
+            }
+            missing_reranker = [
+                name for name, item in reranker_required.items() if item in (None, "")
+            ]
+            if missing_reranker:
+                raise ValueError(
+                    "RERANKER_ENABLED=true 时缺少配置：" + ", ".join(missing_reranker)
+                )
+        if self.judge_mode == "llm" and not self.enable_external_models:
+            raise ValueError("JUDGE_MODE=llm 时必须打开 ENABLE_EXTERNAL_MODELS")
         return self
 
     @property

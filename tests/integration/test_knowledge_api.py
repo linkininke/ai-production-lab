@@ -105,6 +105,9 @@ def test_upload_list_chat_and_delete_round_trip(
             assert payload["retrieved_chunks"][0]["score_kind"] == "distance"
             assert payload["retrieved_chunks"][0]["score"] < 1e-5
             assert payload["metrics"]["prompt_tokens"] == 11
+            assert payload["metrics"]["retrieval_mode"] == "vector"
+            assert payload["debug"] is None
+            assert payload["metrics"]["reranker_enabled"] is False
             assert "提问机密标记DEF" not in caplog.text
 
             removed = client.delete(f"/api/v1/documents/{document_id}")

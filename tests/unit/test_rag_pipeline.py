@@ -84,8 +84,29 @@ def test_answer_citations_come_from_retrieved_chunks(caplog: pytest.LogCaptureFi
     assert "机密问题唯一标记" not in caplog.text
     assert "机密片段唯一标记" not in caplog.text
     assert '"status":"success"' in caplog.text
+    assert '"trace_status":"warning"' in caplog.text
     assert '"question_length":8' in caplog.text
     assert retriever.calls == [("机密问题唯一标记", 1)]
+    assert response.request_trace is not None
+    assert response.request_trace.question_length == 8
+    assert response.request_trace.status == "warning"
+    assert [item.name for item in response.request_trace.spans] == [
+        "query_validation",
+        "retrieval",
+        "context_builder",
+        "prompt_builder",
+        "llm_generation",
+        "citation_validation",
+    ]
+    citation_span = response.request_trace.spans[-1]
+    assert citation_span.status == "warning"
+    assert citation_span.output_summary == "valid=1 invalid=1"
+    dumped = response.request_trace.model_dump_json()
+    assert "机密问题唯一标记" not in dumped
+    assert "机密片段唯一标记" not in dumped
+    assert [item.failure_type for item in response.failure_records] == ["CITATION_FAILURE"]
+    assert "机密问题唯一标记" not in response.failure_records[0].model_dump_json()
+    assert '"failure_types":["CITATION_FAILURE"]' in caplog.text
 
 
 def test_no_hits_still_asks_the_model_to_abstain() -> None:
@@ -107,6 +128,10 @@ def test_generation_failure_is_distinct_from_retrieval_failure(
         _pipeline(FixedRetriever([_hit()]), llm).query("事务为什么失效")
     assert '"error_type":"LLMError"' in caplog.text
     assert '"error_stage":"generation"' in caplog.text
+    assert '"trace_status":"error"' in caplog.text
+    assert "llm_generation" in caplog.text
+    assert "citation_validation" not in caplog.text
+    assert '"failure_types":["GENERATION_FAILURE"]' in caplog.text
     assert "事务为什么失效" not in caplog.text
 
     retriever = FixedRetriever([_hit()], fail=EmbeddingError("模拟向量化失败"))
@@ -118,18 +143,29 @@ def test_generation_failure_is_distinct_from_retrieval_failure(
     assert "事务为什么失效" not in caplog.text
 
 
-def test_oversized_chunk_does_not_call_the_model() -> None:
+def test_oversized_chunk_does_not_call_the_model(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
     llm = ScriptedLLM()
     with pytest.raises(ContextOverflowError):
         _pipeline(FixedRetriever([_hit("一二三四五六七八")]), llm, max_chars=4).query("事务")
     assert llm.calls == []
+    assert "context_builder" in caplog.text
+    assert "llm_generation" not in caplog.text
+    assert '"trace_status":"error"' in caplog.text
+    assert '"failure_types":["CONTEXT_FAILURE"]' in caplog.text
 
 
-def test_question_and_top_k_are_validated_before_retrieval() -> None:
+def test_question_and_top_k_are_validated_before_retrieval(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO)
     retriever = FixedRetriever([_hit()])
     pipeline = _pipeline(retriever, ScriptedLLM())
     with pytest.raises(QuestionValidationError, match="不能为空"):
         pipeline.query("   ")
+    assert '"trace_status":"error"' in caplog.text
+    assert "query_validation" in caplog.text
+    assert '"failure_types":["QUERY_FAILURE"]' in caplog.text
     with pytest.raises(QuestionValidationError, match="MAX_QUESTION_CHARS"):
         pipeline.query("超" * 21)
     with pytest.raises(QuestionValidationError, match="top_k"):

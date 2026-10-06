@@ -7,27 +7,59 @@ API 地址用环境变量 RAG_API_BASE_URL，默认是本机 8000 端口。
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 import httpx
 import streamlit as st
 
+_UI_DIR = str(Path(__file__).resolve().parent)
+if _UI_DIR not in sys.path:
+    sys.path.insert(0, _UI_DIR)
+from dashboard import is_ratio_metric, render_dashboard
+from system_health import render_system_health
+
 _DEFAULT_API = "http://127.0.0.1:8000"
 _TIMEOUT = httpx.Timeout(120.0, connect=5.0)
+_MODE_LABELS = {
+    "vector": "Vector",
+    "bm25": "BM25",
+    "hybrid": "Hybrid",
+    "hybrid_rerank": "Hybrid + Reranker",
+}
+_SCORE_NOTES = {
+    "distance": "余弦距离，越小越近",
+    "bm25": "BM25 分数，越大越相关",
+    "rrf": "RRF 分数，越大越靠前",
+    "rerank": "重排相关度，越大越靠前",
+}
+_STAGE_LABELS = {
+    "vector": "Vector Results",
+    "bm25": "BM25 Results",
+    "rrf": "RRF Results",
+    "reranker": "Reranker Results",
+}
 
 
 def main() -> None:
     st.set_page_config(page_title="AI Production Lab", layout="wide")
     st.title("个人技术知识库")
-    st.caption("导入 Markdown 或 TXT，提问时查看引用和本次耗时，也可以运行评测集。")
+    st.caption("导入 Markdown 或 TXT。提问时可切换检索模式，并展开每一步候选。")
 
     api_base = _sidebar_api_base()
-    documents_tab, chat_tab, evaluation_tab = st.tabs(["文档", "问答", "评测"])
+    documents_tab, chat_tab, evaluation_tab, dashboard_tab, health_tab = st.tabs(
+        ["文档", "问答", "评测", "仪表盘", "系统健康"]
+    )
     with documents_tab:
         _render_documents(api_base)
     with chat_tab:
         _render_chat(api_base)
     with evaluation_tab:
         _render_evaluation(api_base)
+    with dashboard_tab:
+        render_dashboard(api_base, _request_json)
+    with health_tab:
+        render_system_health(api_base, _request_json)
 
 
 def _sidebar_api_base() -> str:
@@ -91,13 +123,24 @@ def _render_chat(api_base: str) -> None:
     with st.form("ask"):
         question = st.text_area("问题", placeholder="例如：Spring 事务为什么会失效？")
         top_k = st.number_input("Top-K", min_value=1, max_value=20, value=5, step=1)
+        retrieval_mode = st.selectbox(
+            "检索模式",
+            options=list(_MODE_LABELS),
+            format_func=lambda item: _MODE_LABELS[item],
+        )
+        debug = st.checkbox("展开检索过程")
         submitted = st.form_submit_button("提问", type="primary")
     if submitted:
         result = _show(
             _request(
                 "POST",
                 f"{api_base}/api/v1/chat",
-                json={"question": question, "top_k": int(top_k)},
+                json={
+                    "question": question,
+                    "top_k": int(top_k),
+                    "retrieval_mode": retrieval_mode,
+                    "debug": debug,
+                },
             )
         )
         if result is not None:
@@ -106,9 +149,113 @@ def _render_chat(api_base: str) -> None:
     if not isinstance(result, dict):
         return
     st.markdown(result.get("answer", ""))
+    _render_retrieval_details(result.get("metrics", {}))
     _render_metrics(result.get("metrics", {}))
     _render_citations(result.get("citations", []))
     _render_retrieved(result.get("retrieved_chunks", []))
+    _render_debug(result.get("debug"))
+
+
+def _render_retrieval_details(metrics: object) -> None:
+    if not isinstance(metrics, dict):
+        return
+    st.subheader("Retrieval Details")
+    mode = str(metrics.get("retrieval_mode") or "vector")
+    st.write(f"Mode: {_MODE_LABELS.get(mode, mode)}")
+    st.write(f"Candidates: {_candidate_text(metrics)}")
+    st.write(f"Final: {metrics.get('final_result_count')}")
+    reranker_enabled = metrics.get("reranker_enabled") is True
+    reranker_name = metrics.get("reranker_name") or "未调用"
+    if reranker_enabled:
+        st.write(f"Reranker: {reranker_name}，候选 {metrics.get('reranker_candidate_count')}")
+    else:
+        st.write("Reranker: 未启用。这次没有调用重排服务。")
+    st.caption(_latency_text(metrics))
+
+
+def _candidate_text(metrics: dict[str, object]) -> str:
+    parts: list[str] = []
+    labels = (
+        ("vector_candidate_count", "Vector"),
+        ("bm25_candidate_count", "BM25"),
+        ("hybrid_candidate_count", "RRF"),
+        ("reranker_candidate_count", "Reranker"),
+    )
+    for key, label in labels:
+        value = metrics.get(key)
+        if isinstance(value, int):
+            parts.append(f"{label} {value}")
+    return " · ".join(parts) if parts else "-"
+
+
+def _latency_text(metrics: dict[str, object]) -> str:
+    parts: list[str] = []
+    labels = (
+        ("embedding_latency_ms", "Embedding"),
+        ("vector_latency_ms", "Vector"),
+        ("bm25_latency_ms", "BM25"),
+        ("hybrid_latency_ms", "Hybrid"),
+        ("rrf_latency_ms", "RRF"),
+        ("reranker_latency_ms", "Reranker"),
+        ("retrieval_latency_ms", "Retrieval"),
+        ("context_build_latency_ms", "Context"),
+        ("generation_latency_ms", "LLM"),
+        ("total_latency_ms", "Total"),
+    )
+    for key, label in labels:
+        value = metrics.get(key)
+        if isinstance(value, int | float):
+            parts.append(f"{label} {value:.0f} ms")
+    return "Latency: " + (" · ".join(parts) if parts else "-")
+
+
+def _render_debug(debug: object) -> None:
+    if not isinstance(debug, dict):
+        return
+    spans = debug.get("spans")
+    if isinstance(spans, list) and spans:
+        st.subheader("请求 Trace")
+        status = debug.get("trace_status") or "-"
+        st.caption(f"状态 {status}")
+        for item in spans:
+            if not isinstance(item, dict):
+                continue
+            duration = item.get("duration_ms", 0)
+            milliseconds = f"{float(duration):.1f}" if isinstance(duration, int | float) else "-"
+            summary = str(item.get("output_summary") or "")
+            suffix = f" · {summary}" if summary else ""
+            name = item.get("name", "")
+            status_text = item.get("status", "")
+            st.caption(f"{name} · {milliseconds} ms · {status_text}{suffix}")
+    stages = debug.get("stages")
+    if not isinstance(stages, list):
+        return
+    st.subheader("检索过程")
+    if not stages:
+        st.caption("这次没有分步结果。")
+        return
+    for stage in stages:
+        if not isinstance(stage, dict):
+            continue
+        name = str(stage.get("stage", ""))
+        hits = stage.get("hits")
+        count = len(hits) if isinstance(hits, list) else 0
+        with st.expander(f"{_STAGE_LABELS.get(name, name)} · {count}", expanded=False):
+            if not isinstance(hits, list) or not hits:
+                st.caption("这一步没有命中。")
+                continue
+            for index, item in enumerate(hits, start=1):
+                if isinstance(item, dict):
+                    st.write(_hit_line(index, item))
+
+
+def _hit_line(index: int, item: dict[str, object]) -> str:
+    score = item.get("score", 0)
+    number = float(score) if isinstance(score, int | float) else 0.0
+    return (
+        f"#{index} {item.get('chunk_id', '')} "
+        f"score={number:.4f} {_SCORE_NOTES.get(str(item.get('score_kind', '')), '')}"
+    )
 
 
 def _render_metrics(metrics: dict[str, object]) -> None:
@@ -135,14 +282,17 @@ def _render_citations(citations: list[dict[str, object]]) -> None:
 
 def _render_retrieved(chunks: list[dict[str, object]]) -> None:
     st.subheader("检索结果")
-    st.caption("score 是余弦距离，越小越近。")
     if not chunks:
         st.caption("没有检索到片段。")
         return
+    kind = str(chunks[0].get("score_kind", "distance"))
+    st.caption(_SCORE_NOTES.get(kind, ""))
     for index, item in enumerate(chunks, start=1):
         score = item.get("score", 0)
-        title = f"{index}. {item.get('filename', '')} · 距离 {float(score):.4f}"
+        number = float(score) if isinstance(score, int | float) else 0.0
+        title = f"{index}. {item.get('filename', '')} · {number:.4f}"
         with st.expander(title):
+            st.caption(str(item.get("chunk_id", "")))
             st.text(str(item.get("text", "")))
 
 
@@ -150,7 +300,7 @@ def _render_evaluation(api_base: str) -> None:
     st.subheader("运行评测")
     st.caption(
         "样例文档会写入当前向量库，其他文档仍会参与检索。"
-        "拒答检查是短语规则，不是语义评分。"
+        "拒答、引用和答案要点都是规则检查，不是语义评分。"
     )
     with st.form("run-eval"):
         top_k = st.number_input("评测 Top-K", min_value=1, max_value=20, value=5, step=1)
@@ -184,6 +334,17 @@ def _render_evaluation_report(report: dict[str, object]) -> None:
     rank.metric("MRR@K", _ratio(report.get("mrr_at_k")))
     keywords.metric("关键词覆盖率", _ratio(report.get("keyword_coverage")))
     abstention.metric("拒答率", _ratio(report.get("abstention_rate")))
+    validity, coverage, completeness, decision = st.columns(4)
+    validity.metric("引用有效率", _ratio(report.get("citation_validity")))
+    coverage.metric("引用覆盖率", _ratio(report.get("citation_coverage")))
+    completeness.metric("答案完整性", _ratio(report.get("answer_completeness")))
+    decision.metric("拒答判断", _ratio(report.get("abstention_quality")))
+    judged_correct, judged_grounded, judged_complete, judged_overall = st.columns(4)
+    judged_correct.metric("Judge 正确性", _ratio(report.get("judge_correctness")))
+    judged_grounded.metric("Judge 有依据", _ratio(report.get("judge_groundedness")))
+    judged_complete.metric("Judge 完整性", _ratio(report.get("judge_completeness")))
+    judged_overall.metric("Judge 综合", _ratio(report.get("judge_overall")))
+    st.caption(str(report.get("judge_note", "")))
     retrieval, generation, total = st.columns(3)
     retrieval.metric("平均检索耗时", _milliseconds(report.get("mean_retrieval_latency_ms")))
     generation.metric("平均生成耗时", _milliseconds(report.get("mean_generation_latency_ms")))
@@ -234,8 +395,12 @@ def _render_question(item: dict[str, object]) -> None:
         st.caption(
             "MRR "
             f"{_ratio(item.get('reciprocal_rank'))} · 关键词 "
-            f"{_ratio(item.get('keyword_coverage'))} · 拒答 "
-            f"{_abstained(item.get('abstained'))}"
+            f"{_ratio(item.get('keyword_coverage'))} · 引用有效 "
+            f"{_ratio(item.get('citation_validity'))} · 引用覆盖 "
+            f"{_ratio(item.get('citation_coverage'))} · 完整性 "
+            f"{_ratio(item.get('answer_completeness'))} · 拒答 "
+            f"{_abstained(item.get('abstained'))} · Judge "
+            f"{_ratio(item.get('judge_score'))}"
         )
         retrieved = item.get("retrieved", [])
         if not isinstance(retrieved, list) or not retrieved:
@@ -304,19 +469,34 @@ def _render_evaluation_compare(api_base: str) -> None:
 _METRIC_LABELS = {
     "recall_at_k": "Recall@K",
     "mrr_at_k": "MRR@K",
+    "precision_at_k": "Precision@K",
     "keyword_coverage": "关键词覆盖率",
+    "citation_validity": "引用有效率",
+    "citation_coverage": "引用覆盖率",
+    "answer_completeness": "答案完整性",
     "abstention_rate": "拒答率",
+    "abstention_quality": "拒答判断",
+    "judge_correctness": "Judge 正确性",
+    "judge_groundedness": "Judge 有依据",
+    "judge_completeness": "Judge 完整性",
+    "judge_overall": "Judge 综合",
     "mean_retrieval_latency_ms": "平均检索耗时",
     "mean_generation_latency_ms": "平均生成耗时",
     "mean_total_latency_ms": "平均总耗时",
+    "p50_latency_ms": "P50 耗时",
+    "p95_latency_ms": "P95 耗时",
+    "p99_latency_ms": "P99 耗时",
+    "success_rate": "成功率",
+    "failure_rate": "失败率",
+    "timeout_rate": "超时率",
+    "judge_cost": "Judge 成本",
     "mean_prompt_tokens": "平均输入 Token",
     "mean_completion_tokens": "平均输出 Token",
 }
-_RATIO_METRICS = {"recall_at_k", "mrr_at_k", "keyword_coverage", "abstention_rate"}
 
 
 def _is_ratio(name: str) -> bool:
-    return name in _RATIO_METRICS
+    return is_ratio_metric(name)
 
 
 def _ratio(value: object) -> str:

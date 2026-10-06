@@ -33,6 +33,9 @@ class VectorStore(Protocol):
     def get_by_document_id(self, document_id: str) -> list[Chunk]:
         """读取一份文档的全部片段，按 chunk_index 排序。"""
 
+    def list_chunks(self) -> list[Chunk]:
+        """读取全部片段。BM25 用它重建关键词索引，不另存一份正文。"""
+
     def list_documents(self) -> list[IndexedDocument]:
         """按文档汇总索引。只返回身份和片段数量，不返回正文。"""
 

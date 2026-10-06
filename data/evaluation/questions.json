@@ -1,8 +1,9 @@
 {
-  "version": "v1",
+  "version": "v2",
   "questions": [
     {
       "id": "q001",
+      "category": "semantic",
       "question": "Spring 事务失效的常见原因是什么？",
       "expected_keywords": ["自调用", "代理", "事务传播"],
       "expected_document_ids": ["doc_a3b81248fcd23568"],
@@ -10,6 +11,7 @@
     },
     {
       "id": "q002",
+      "category": "semantic",
       "question": "数据库连接池需要配置哪些参数？",
       "expected_keywords": ["最大连接数", "最小空闲", "超时"],
       "expected_document_ids": ["doc_71eaf1f9cf0da067"],
@@ -17,6 +19,7 @@
     },
     {
       "id": "q003",
+      "category": "semantic",
       "question": "HTTP 客户端的超时应该如何设置？",
       "expected_keywords": ["连接超时", "读取超时"],
       "expected_document_ids": ["doc_1b8b08d0ccdcb8dc"],
@@ -24,6 +27,7 @@
     },
     {
       "id": "q004",
+      "category": "exact_keyword",
       "question": "自调用为什么不会开启事务？",
       "expected_keywords": ["自调用", "代理"],
       "expected_document_ids": ["doc_a3b81248fcd23568"],
@@ -31,6 +35,7 @@
     },
     {
       "id": "q005",
+      "category": "exact_keyword",
       "question": "内容哈希没变时还要重新向量化吗？",
       "expected_keywords": ["内容哈希", "跳过"],
       "expected_document_ids": ["doc_0e3fa425d61a07da"],
@@ -38,6 +43,7 @@
     },
     {
       "id": "q006",
+      "category": "semantic",
       "question": "同一个类里的方法互相调用，声明式事务为什么没有包住这次调用？",
       "expected_keywords": ["自调用", "代理"],
       "expected_document_ids": ["doc_a3b81248fcd23568"],
@@ -45,6 +51,7 @@
     },
     {
       "id": "q007",
+      "category": "semantic",
       "question": "连接都借出去之后，新的数据库请求会怎样？",
       "expected_keywords": ["池耗尽", "等待"],
       "expected_document_ids": ["doc_71eaf1f9cf0da067"],
@@ -52,6 +59,7 @@
     },
     {
       "id": "q008",
+      "category": "semantic",
       "question": "切分长度是按 Token 计算的吗？",
       "expected_keywords": ["字符", "重叠"],
       "expected_document_ids": ["doc_224aac7e68c76b4e"],
@@ -59,6 +67,7 @@
     },
     {
       "id": "q009",
+      "category": "multi_document",
       "question": "更新已入库的文档，以及回答里的引用标记，分别要注意什么？",
       "expected_keywords": ["重新向量化", "不存在编号"],
       "expected_document_ids": ["doc_0e3fa425d61a07da", "doc_a3fd2abecbef1ab3"],
@@ -66,6 +75,7 @@
     },
     {
       "id": "q010",
+      "category": "multi_document",
       "question": "调用外部 HTTP 服务和向连接池借连接时，超时分别起什么作用？",
       "expected_keywords": ["连接超时", "池耗尽"],
       "expected_document_ids": ["doc_1b8b08d0ccdcb8dc", "doc_71eaf1f9cf0da067"],
@@ -73,6 +83,7 @@
     },
     {
       "id": "q011",
+      "category": "unanswerable",
       "question": "Kubernetes 滚动发布时如何设置就绪探针？",
       "expected_keywords": [],
       "expected_document_ids": [],
@@ -80,7 +91,152 @@
     },
     {
       "id": "q012",
+      "category": "unanswerable",
       "question": "Redis 分布式锁应该如何设置过期时间？",
+      "expected_keywords": [],
+      "expected_document_ids": [],
+      "expects_abstention": true
+    },
+    {
+      "id": "q013",
+      "category": "exact_keyword",
+      "question": "订单号 202610050018 找不到时怎么处理？",
+      "expected_keywords": ["202610050018", "待核对"],
+      "expected_document_ids": ["doc_5ec62c91fb7d1907"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q014",
+      "category": "exact_keyword",
+      "question": "连接池参数 max_overflow 设为 0 表示什么？",
+      "expected_keywords": ["max_overflow"],
+      "expected_document_ids": ["doc_457611c1a4e325d6"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q015",
+      "category": "exact_keyword",
+      "question": "请求头 Idempotency-Key 用来做什么？",
+      "expected_keywords": ["幂等键"],
+      "expected_document_ids": ["doc_9c20e1d843be779b"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q016",
+      "category": "technical_identifier",
+      "question": "Redis 的 maxmemory-policy 有什么作用？",
+      "expected_keywords": ["maxmemory-policy", "allkeys-lru"],
+      "expected_document_ids": ["doc_dda422573858a8b8"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q017",
+      "category": "technical_identifier",
+      "question": "@Transactional 为什么有时不会生效？",
+      "expected_keywords": ["@Transactional", "代理"],
+      "expected_document_ids": ["doc_3e94580d11259bb2"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q018",
+      "category": "technical_identifier",
+      "question": "RedisTemplate 和字符串序列化要注意什么？",
+      "expected_keywords": ["RedisTemplate", "StringRedisTemplate"],
+      "expected_document_ids": ["doc_e7e65e715fb22cd6"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q019",
+      "category": "technical_identifier",
+      "question": "限流响应头 X-RateLimit-Remaining 为 0 时客户端怎么办？",
+      "expected_keywords": ["X-RateLimit-Remaining", "Retry-After"],
+      "expected_document_ids": ["doc_6a79fc61e7e9f046"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q020",
+      "category": "semantic",
+      "question": "Redis 内存满了以后，键是按什么规则被删掉的？",
+      "expected_keywords": ["淘汰", "allkeys-lru"],
+      "expected_document_ids": ["doc_dda422573858a8b8"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q021",
+      "category": "semantic",
+      "question": "热点缓存同时失效，数据库为什么会被打满？",
+      "expected_keywords": ["缓存击穿", "回源"],
+      "expected_document_ids": ["doc_df7fbc9bd4a7ce90"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q022",
+      "category": "semantic",
+      "question": "翻到很后面的列表页，为什么不该用很大的偏移量？",
+      "expected_keywords": ["游标", "OFFSET"],
+      "expected_document_ids": ["doc_f18f927e575216ac"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q023",
+      "category": "semantic",
+      "question": "两个事务互相锁住对方需要的行，数据库通常怎么处理？",
+      "expected_keywords": ["死锁", "回滚"],
+      "expected_document_ids": ["doc_09d02c20abf8cd92"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q024",
+      "category": "semantic",
+      "question": "同一次用户操作因为超时被客户端发了两次，服务端怎样避免写两次？",
+      "expected_keywords": ["幂等"],
+      "expected_document_ids": ["doc_9c20e1d843be779b"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q025",
+      "category": "multi_document",
+      "question": "事务注解没有拦住内部调用，以及 Redis 客户端默认序列化，分别是什么问题？",
+      "expected_keywords": ["代理", "序列化"],
+      "expected_document_ids": ["doc_3e94580d11259bb2", "doc_e7e65e715fb22cd6"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q026",
+      "category": "multi_document",
+      "question": "连接池溢出和池子借空，分别由什么限制？",
+      "expected_keywords": ["max_overflow", "池耗尽"],
+      "expected_document_ids": ["doc_457611c1a4e325d6", "doc_71eaf1f9cf0da067"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q027",
+      "category": "multi_document",
+      "question": "重试写请求和幂等键为什么要一起看？",
+      "expected_keywords": ["非幂等", "幂等键"],
+      "expected_document_ids": ["doc_1984eadd75bb4a9d", "doc_9c20e1d843be779b"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q028",
+      "category": "multi_document",
+      "question": "把一次请求的日志串起来，以及限流后该等多久，分别看哪个字段？",
+      "expected_keywords": ["trace_id", "Retry-After"],
+      "expected_document_ids": ["doc_7d11c623b59d0fee", "doc_6a79fc61e7e9f046"],
+      "expects_abstention": false
+    },
+    {
+      "id": "q029",
+      "category": "unanswerable",
+      "question": "如何用 WebAssembly 在浏览器里跑本地向量模型？",
+      "expected_keywords": [],
+      "expected_document_ids": [],
+      "expects_abstention": true
+    },
+    {
+      "id": "q030",
+      "category": "unanswerable",
+      "question": "GraphQL 订阅如何做权限校验？",
       "expected_keywords": [],
       "expected_document_ids": [],
       "expects_abstention": true

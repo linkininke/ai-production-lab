@@ -9,11 +9,17 @@ from app.api.schemas.chat import (
     ChatRequest,
     ChatResponse,
     CitationResponse,
+    DebugStageResponse,
+    RetrievalDebugResponse,
     RetrievedChunkResponse,
+    SpanResponse,
 )
 from app.core.container import AppContainer
 from app.core.dependencies import get_container
+from app.observability.trace import RequestTrace
+from app.rag.models import RAGMetrics
 from app.retrieval.models import RetrievalResult
+from app.retrieval.trace import RetrievalTrace
 
 router = APIRouter(tags=["chat"])
 
@@ -23,8 +29,10 @@ def answer_question(
     body: ChatRequest,
     container: AppContainer = Depends(get_container),
 ) -> ChatResponse:
-    result = container.require_rag().query(body.question, top_k=body.top_k)
-    metrics = result.metrics
+    result = container.require_rag(body.retrieval_mode or "vector").query(
+        body.question,
+        top_k=body.top_k,
+    )
     return ChatResponse(
         answer=result.answer,
         citations=[
@@ -38,14 +46,8 @@ def answer_question(
             for item in result.citations
         ],
         retrieved_chunks=[_chunk_response(item) for item in result.retrieved_chunks],
-        metrics=ChatMetricsResponse(
-            retrieval_latency_ms=metrics.retrieval_latency_ms,
-            context_build_latency_ms=metrics.context_build_latency_ms,
-            generation_latency_ms=metrics.generation_latency_ms,
-            total_latency_ms=metrics.total_latency_ms,
-            prompt_tokens=metrics.prompt_tokens,
-            completion_tokens=metrics.completion_tokens,
-        ),
+        metrics=_metrics_response(result.metrics),
+        debug=_debug_response(result.retrieval_trace, result.request_trace) if body.debug else None,
     )
 
 
@@ -60,4 +62,48 @@ def _chunk_response(hit: RetrievalResult) -> RetrievedChunkResponse:
         text=hit.text,
         score=hit.score,
         score_kind=hit.score_kind,
+        retriever=hit.retriever,
+        reranker=hit.reranker,
+    )
+
+
+def _metrics_response(metrics: RAGMetrics) -> ChatMetricsResponse:
+    return ChatMetricsResponse.model_validate(metrics.model_dump())
+
+
+def _debug_response(
+    trace: RetrievalTrace | None,
+    request_trace: RequestTrace | None,
+) -> RetrievalDebugResponse:
+    if trace is None:
+        return RetrievalDebugResponse(stages=[])
+    stages: list[DebugStageResponse] = []
+    named = (
+        ("vector", trace.vector_hits),
+        ("bm25", trace.bm25_hits),
+        ("rrf", trace.rrf_hits),
+        ("reranker", trace.reranker_hits),
+    )
+    for stage, hits in named:
+        if hits is None:
+            continue
+        stages.append(
+            DebugStageResponse(
+                stage=stage,
+                hits=[_chunk_response(item) for item in hits],
+            )
+        )
+    return RetrievalDebugResponse(
+        stages=stages,
+        trace_status=None if request_trace is None else request_trace.status,
+        spans=[
+            SpanResponse(
+                name=item.name,
+                duration_ms=item.duration_ms,
+                status=item.status,
+                input_summary=item.input_summary,
+                output_summary=item.output_summary,
+            )
+            for item in ([] if request_trace is None else request_trace.spans)
+        ],
     )

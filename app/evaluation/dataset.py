@@ -10,74 +10,22 @@ import json
 import re
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
 
 from app.core.exceptions import EvaluationError
+from app.evaluation.core.case import EvaluationCase
 
-_QUESTION_ID = re.compile(r"^[a-z0-9_-]{1,32}$")
-_DOCUMENT_ID = re.compile(r"^doc_[0-9a-f]{16}$")
 _VERSION = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
 
-
-class EvalQuestion(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str
-    question: str
-    expected_keywords: list[str] = Field(default_factory=list)
-    expected_document_ids: list[str] = Field(default_factory=list)
-    expects_abstention: bool = False
-
-    @field_validator("id")
-    @classmethod
-    def question_id_is_safe(cls, value: str) -> str:
-        if not _QUESTION_ID.fullmatch(value):
-            raise ValueError("题目 ID 只能使用小写字母、数字、下划线和短横线")
-        return value
-
-    @field_validator("question")
-    @classmethod
-    def question_not_blank(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("问题不能为空")
-        return stripped
-
-    @field_validator("expected_keywords")
-    @classmethod
-    def keywords_are_unique(cls, value: list[str]) -> list[str]:
-        cleaned = [_keyword(item) for item in value]
-        folded = [item.casefold() for item in cleaned]
-        if len(folded) != len(set(folded)):
-            raise ValueError("关键词不能重复")
-        return cleaned
-
-    @field_validator("expected_document_ids")
-    @classmethod
-    def document_ids_are_real(cls, value: list[str]) -> list[str]:
-        cleaned: list[str] = []
-        for item in value:
-            if not _DOCUMENT_ID.fullmatch(item):
-                raise ValueError("文档 ID 必须是导入后的 doc_ 加 16 位哈希")
-            cleaned.append(item)
-        if len(cleaned) != len(set(cleaned)):
-            raise ValueError("预期文档不能重复")
-        return cleaned
-
-    @model_validator(mode="after")
-    def abstention_does_not_expect_documents(self) -> EvalQuestion:
-        if self.expects_abstention and self.expected_document_ids:
-            raise ValueError("拒答题不能同时标注相关文档")
-        if not self.expects_abstention and not self.expected_document_ids:
-            raise ValueError("非拒答题必须标注相关文档")
-        return self
+# 旧名称保留，类型就是 EvaluationCase。
+EvalQuestion = EvaluationCase
 
 
 class EvaluationDataset(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: str
-    questions: list[EvalQuestion]
+    questions: list[EvaluationCase]
 
     @field_validator("version")
     @classmethod
@@ -110,13 +58,6 @@ def load_dataset(path: Path) -> EvaluationDataset:
         return EvaluationDataset.model_validate(payload)
     except ValidationError as exc:
         raise EvaluationError(_format_validation_error(exc)) from exc
-
-
-def _keyword(value: str) -> str:
-    stripped = value.strip()
-    if not stripped:
-        raise ValueError("关键词不能为空")
-    return stripped
 
 
 def _format_validation_error(exc: ValidationError) -> str:

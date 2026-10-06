@@ -23,11 +23,14 @@ _SECRET = "问题机密标记不在库里"
 
 
 class SelectiveLLM:
+    calls = 0
+
     @property
     def model_name(self) -> str:
         return "fake-llm"
 
     def generate(self, system_prompt: str, user_prompt: str) -> LLMResult:
+        SelectiveLLM.calls += 1
         del system_prompt
         if "触发生成失败标记" in user_prompt:
             raise LLMError("模拟生成失败")
@@ -123,7 +126,11 @@ def test_run_saves_report_and_keeps_the_dataset(
             assert body["recall_at_k"] == pytest.approx(1.0)
             assert body["mrr_at_k"] == pytest.approx(1.0)
             assert body["keyword_coverage"] == pytest.approx(1.0)
+            assert body["citation_validity"] == pytest.approx(1.0)
+            assert body["citation_coverage"] == pytest.approx(1.0)
+            assert body["answer_completeness"] is None
             assert body["abstention_rate"] == pytest.approx(1.0)
+            assert body["abstention_quality"] == pytest.approx(1.0)
             assert body["abstention_method"] == "phrase_rule"
             assert body["failure_count"] == 1
             assert body["failures"][0]["id"] == "q003"
@@ -136,6 +143,37 @@ def test_run_saves_report_and_keeps_the_dataset(
             assert by_id["q001"]["retrieved"][0]["score"] < 1e-5
             assert by_id["q002"]["abstained"] is True
             assert by_id["q002"]["retrieved"] == []
+            assert by_id["q001"]["failure_records"] == []
+            assert by_id["q002"]["failure_records"] == []
+            assert by_id["q003"]["failure_records"][0]["failure_type"] == "GENERATION_FAILURE"
+            assert _SECRET not in str(by_id["q003"]["failure_records"])
+            assert body["judge_source"] == "mock"
+            assert body["judge_correctness"] is None
+            assert body["judge_overall"] is None
+            assert body["judge_cost"] is None
+            assert body["quality_gate_status"] == "QUALITY GATE NOT CONFIGURED"
+            assert body["slo_status"] == "SLO NOT CONFIGURED"
+            assert body["success_rate"] == pytest.approx(2 / 3)
+            assert body["p50_latency_ms"] is not None
+            assert body["p95_latency_ms"] >= body["p50_latency_ms"]
+            failure_types = {
+                item["name"]: item["count"] for item in body["failure_by_type"]
+            }
+            assert failure_types == {"GENERATION_FAILURE": 1}
+            q001_trace = by_id["q001"]["trace"]
+            assert any(item["name"] == "query_validation" for item in q001_trace["spans"])
+            assert "自调用绕过了代理" not in str(q001_trace)
+            assert all("text" not in hit for stage in q001_trace["stages"] for hit in stage["hits"])
+            q003_trace = by_id["q003"]["trace"]
+            assert q003_trace["status"] == "error"
+            assert any(
+                item["name"] == "llm_generation" and item["status"] == "error"
+                for item in q003_trace["spans"]
+            )
+            assert _SECRET not in str(by_id["q002"]["trace"])
+            assert by_id["q001"]["judge_source"] == "mock"
+            assert by_id["q001"]["judge_score"] is None
+            assert "不是真实评测" in by_id["q001"]["judge_reasoning"]
             assert questions.read_text(encoding="utf-8") == original
             assert _SECRET not in caplog.text
             saved = tmp_path / "reports" / body["filename"]
@@ -185,3 +223,19 @@ def test_evaluation_without_models_returns_configuration_error(tmp_path: Path) -
         assert response.json()["error"]["code"] == "configuration_error"
         health = client.get("/api/v1/health")
         assert health.status_code == 200
+
+
+def test_budget_without_an_estimate_stops_before_the_model(tmp_path: Path) -> None:
+    SelectiveLLM.calls = 0
+    client, store, _questions = _prepare(tmp_path)
+    try:
+        with client:
+            response = client.post("/api/v1/evaluation/run", json={"max_cost": 0.01})
+        assert response.status_code == 400
+        message = response.json()["error"]["message"]
+        assert response.json()["error"]["code"] == "evaluation_error"
+        assert "已停止" in message
+        assert "没有继续调用模型" in message
+        assert SelectiveLLM.calls == 0
+    finally:
+        store.close()

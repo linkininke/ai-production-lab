@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from app.core.exceptions import ConfigurationError, EmbeddingError, RetrievalError
+from app.retrieval.factory import RetrieverFactory
 from app.retrieval.models import RetrievalResult
 from app.retrieval.vector_retriever import VectorRetriever
 from tests.fake_embedding import HashEmbedding
@@ -45,13 +48,21 @@ def _hit(chunk_id: str, score: float) -> RetrievalResult:
     )
 
 
-def test_distance_limit_drops_far_hits_and_keeps_order() -> None:
+def test_distance_limit_drops_far_hits_and_keeps_order(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
     store = RankingStore([_hit("near", 0.1), _hit("far", 0.9)])
     retriever = VectorRetriever(HashEmbedding(), store, max_distance=0.5)
     hits = retriever.retrieve("事务为什么失效", top_k=5)
     assert [hit.chunk_id for hit in hits] == ["near"]
     assert store.last_top_k == 5
     assert hits[0].score_kind == "distance"
+    assert hits[0].retriever == "vector"
+    assert hits[0].score == 0.1
+    assert "retriever=vector" in caplog.text
+    assert "top_k=5" in caplog.text
+    assert "result_count=1" in caplog.text
+    assert "latency_ms=" in caplog.text
+    assert "事务为什么失效" not in caplog.text
 
 
 def test_blank_query_does_not_embed() -> None:
@@ -73,3 +84,18 @@ def test_embedding_failure_is_not_rewritten() -> None:
 def test_mismatched_model_is_rejected() -> None:
     with pytest.raises(ConfigurationError, match="不一致"):
         VectorRetriever(HashEmbedding(), RankingStore([], model="other-model"))
+
+
+def test_factory_returns_vector_retriever() -> None:
+    store = RankingStore([_hit("near", 0.2)])
+    retriever = RetrieverFactory(HashEmbedding(), store, max_distance=0.5).create()
+    hits = retriever.retrieve("事务", top_k=3)
+    assert hits[0].retriever == "vector"
+    assert hits[0].score_kind == "distance"
+    assert store.last_top_k == 3
+
+
+def test_factory_rejects_unknown_mode() -> None:
+    factory = RetrieverFactory(HashEmbedding(), RankingStore([]))
+    with pytest.raises(ConfigurationError, match="未知检索模式"):
+        factory.create("graph")

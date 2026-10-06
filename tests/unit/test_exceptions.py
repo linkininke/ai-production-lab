@@ -15,6 +15,7 @@ from app.core.exceptions import (
     EmbeddingError,
     EvaluationError,
     LLMError,
+    RerankerError,
     RetrievalError,
     VectorStoreError,
 )
@@ -29,6 +30,7 @@ from app.core.exceptions import (
         (VectorStoreError, "vector_store_error", 500),
         (RetrievalError, "retrieval_error", 500),
         (LLMError, "llm_error", 502),
+        (RerankerError, "reranker_error", 502),
         (ContextOverflowError, "context_overflow_error", 400),
         (ConfigurationError, "configuration_error", 500),
         (EvaluationError, "evaluation_error", 400),

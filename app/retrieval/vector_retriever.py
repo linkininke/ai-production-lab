@@ -13,12 +13,15 @@ from time import perf_counter
 from app.core.exceptions import ConfigurationError, RetrievalError
 from app.embeddings.base import EmbeddingProvider
 from app.retrieval.models import RetrievalResult
+from app.retrieval.trace import note_vector
 from app.vectorstore.base import VectorStore
 
 logger = logging.getLogger(__name__)
 
 
 class VectorRetriever:
+    name = "vector"
+
     def __init__(
         self,
         embedder: EmbeddingProvider,
@@ -46,15 +49,23 @@ class VectorRetriever:
         if top_k < 1:
             raise RetrievalError("top_k 必须大于 0")
         started = perf_counter()
+        embed_started = perf_counter()
         vector = self._embedder.embed_query(query.strip())
+        embedding_ms = (perf_counter() - embed_started) * 1000
+        search_started = perf_counter()
         hits = self._store.search(vector, top_k)
+        search_ms = (perf_counter() - search_started) * 1000
         if self._max_distance is not None:
             hits = [hit for hit in hits if hit.score <= self._max_distance]
+        stamped = [hit.model_copy(update={"retriever": self.name}) for hit in hits]
+        note_vector(stamped, embedding_latency_ms=embedding_ms, vector_latency_ms=search_ms)
         logger.info(
-            "retrieval_completed query_length=%s top_k=%s result_count=%s elapsed_ms=%.1f",
+            "retrieval_completed retriever=%s query_length=%s top_k=%s "
+            "result_count=%s latency_ms=%.1f",
+            self.name,
             len(query.strip()),
             top_k,
-            len(hits),
+            len(stamped),
             (perf_counter() - started) * 1000,
         )
-        return hits
+        return stamped

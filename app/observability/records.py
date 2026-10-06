@@ -19,6 +19,7 @@ from app.core.exceptions import (
     EmbeddingError,
     LLMError,
     QuestionValidationError,
+    RerankerError,
     RetrievalError,
     VectorStoreError,
 )
@@ -38,6 +39,14 @@ ErrorCategory = Literal[
 ]
 
 
+class ObservedSpan(BaseModel):
+    """日志里的阶段摘要。只有名称、耗时和状态。"""
+
+    name: str
+    duration_ms: float
+    status: Literal["success", "error", "warning"]
+
+
 class QueryObservation(BaseModel):
     """一次问答结束时能确定的指标。失败时尚未发生的阶段留空。"""
 
@@ -54,6 +63,24 @@ class QueryObservation(BaseModel):
     error_stage: ErrorStage | None = None
     error_type: str | None = None
     error_category: ErrorCategory | None = None
+    retrieval_mode: str | None = None
+    vector_candidate_count: int | None = None
+    bm25_candidate_count: int | None = None
+    hybrid_candidate_count: int | None = None
+    reranker_enabled: bool | None = None
+    reranker_candidate_count: int | None = None
+    final_result_count: int | None = None
+    embedding_latency_ms: float | None = None
+    vector_latency_ms: float | None = None
+    bm25_latency_ms: float | None = None
+    hybrid_latency_ms: float | None = None
+    rrf_latency_ms: float | None = None
+    reranker_latency_ms: float | None = None
+    trace_id: str | None = None
+    trace_status: Literal["success", "error", "warning"] | None = None
+    span_count: int | None = None
+    spans: list[ObservedSpan] = Field(default_factory=list)
+    failure_types: list[str] = Field(default_factory=list)
 
 
 def classify_failure(exc: BaseException) -> tuple[ErrorStage, ErrorCategory]:
@@ -62,7 +89,7 @@ def classify_failure(exc: BaseException) -> tuple[ErrorStage, ErrorCategory]:
         return "validation", "validation"
     if isinstance(exc, ConfigurationError):
         return "interface", "configuration"
-    if isinstance(exc, EmbeddingError):
+    if isinstance(exc, EmbeddingError | RerankerError):
         category = _transport_category(exc.message)
         if category is not None or "响应" in exc.message:
             return "interface", category or "upstream"

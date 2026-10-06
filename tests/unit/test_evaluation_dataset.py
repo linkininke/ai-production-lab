@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -23,14 +24,20 @@ def test_shipped_questions_match_the_corpus() -> None:
         for path in _CORPUS.iterdir()
         if path.suffix.lower() in {".md", ".markdown", ".txt"}
     }
-    assert dataset.version == "v1"
-    assert len(dataset.questions) >= 10
+    assert dataset.version == "v2"
+    assert len(dataset.questions) >= 30
     assert len(produced) >= 6
     abstention = [item for item in dataset.questions if item.expects_abstention]
     multi = [item for item in dataset.questions if len(item.expected_document_ids) >= 2]
     labeled = [item for item in dataset.questions if item.expected_document_ids]
+    categories = Counter(item.category for item in dataset.questions)
     assert len(abstention) >= 2
     assert len(multi) >= 2
+    assert categories["semantic"] >= 6
+    assert categories["exact_keyword"] >= 4
+    assert categories["technical_identifier"] >= 4
+    assert categories["multi_document"] >= 4
+    assert categories["unanswerable"] >= 4
     assert all(item.expected_keywords for item in labeled)
     assert all(not item.expected_keywords for item in abstention)
     used: set[str] = set()

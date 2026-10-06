@@ -61,6 +61,7 @@ class OpenAICompatibleLLMProvider:
             model=settings.llm_model,
             temperature=settings.llm_temperature,
             timeout=settings.llm_timeout,
+            max_retries=settings.provider_max_retries,
         )
 
     @property

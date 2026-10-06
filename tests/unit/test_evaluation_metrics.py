@@ -10,6 +10,9 @@ from app.evaluation.metrics import (
     document_recall_at_k,
     keyword_coverage,
     matched_keywords,
+    mrr_at_k,
+    precision_at_k,
+    recall_at_k,
     reciprocal_rank_at_k,
 )
 from app.evaluation.models import (
@@ -36,6 +39,16 @@ def test_recall_and_mrr_require_labels() -> None:
         document_recall_at_k(["doc_a"], [])
     with pytest.raises(ValueError, match="标注文档"):
         reciprocal_rank_at_k([], [])
+
+
+def test_recall_counts_one_of_two_labels_as_half() -> None:
+    assert recall_at_k(["doc_a", "doc_c"], ["doc_a", "doc_b"]) == 0.5
+
+
+def test_precision_divides_by_k_not_by_the_result_count() -> None:
+    assert precision_at_k(["doc_a", "doc_x"], ["doc_a"], 5) == 0.2
+    assert mrr_at_k(["doc_x", "doc_a"], ["doc_a"], 5) == 0.5
+    assert mrr_at_k(["doc_x"], ["doc_a"], 1) == 0.0
 
 
 def test_keyword_coverage_is_casefold_and_skips_empty_lists() -> None:

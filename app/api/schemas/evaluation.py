@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 class EvaluationRunRequest(BaseModel):
     top_k: int | None = Field(default=None, ge=1)
+    max_cases: int | None = Field(default=None, ge=1)
+    max_cost: float | None = Field(default=None, ge=0)
 
 
 class CompareRequest(BaseModel):

@@ -16,6 +16,13 @@ def test_defaults_do_not_require_api_keys() -> None:
     assert settings.llm_api_key.get_secret_value() == ""
     assert settings.embedding_api_key.get_secret_value() == ""
     assert settings.chunk_overlap < settings.chunk_size
+    assert settings.hybrid_vector_top_k == 20
+    assert settings.hybrid_bm25_top_k == 20
+    assert settings.hybrid_final_top_k == 10
+    assert settings.rrf_k == 60
+    assert settings.reranker_enabled is False
+    assert settings.reranker_candidate_top_k == 20
+    assert settings.reranker_final_top_k == 5
 
 
 def test_relative_chroma_path_uses_project_root() -> None:
@@ -24,13 +31,31 @@ def test_relative_chroma_path_uses_project_root() -> None:
 
 
 def test_settings_repr_hides_api_key() -> None:
-    settings = make_settings(llm_api_key="sk-super-secret-value")
+    settings = make_settings(
+        llm_api_key="sk-super-secret-value",
+        reranker_api_key="sk-rerank-secret",
+    )
     assert "sk-super-secret-value" not in repr(settings)
+    assert "sk-rerank-secret" not in repr(settings)
 
 
 def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
     with pytest.raises(ValidationError):
         make_settings(chunk_size=100, chunk_overlap=100)
+
+
+def test_enabled_reranker_requires_its_own_settings() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        make_settings(reranker_enabled=True)
+    message = str(exc_info.value)
+    assert "RERANKER_BASE_URL" in message
+    assert "RERANKER_API_KEY" in message
+    assert "RERANKER_MODEL" in message
+
+
+def test_rerank_candidate_pool_cannot_be_smaller_than_final() -> None:
+    with pytest.raises(ValidationError, match="RERANKER_CANDIDATE_TOP_K"):
+        make_settings(reranker_candidate_top_k=4, reranker_final_top_k=5)
 
 
 def test_overlap_error_is_readable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,8 +80,13 @@ def test_external_models_require_separate_llm_and_embedding_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ENABLE_EXTERNAL_MODELS", "true")
+    monkeypatch.setenv("LLM_BASE_URL", "")
     monkeypatch.setenv("LLM_API_KEY", "")
+    monkeypatch.setenv("LLM_MODEL", "")
+    monkeypatch.setenv("EMBEDDING_BASE_URL", "")
     monkeypatch.setenv("EMBEDDING_API_KEY", "")
+    monkeypatch.setenv("EMBEDDING_MODEL", "")
+    monkeypatch.setenv("EMBEDDING_DIMENSION", "")
     monkeypatch.setenv("CHUNK_SIZE", "800")
     monkeypatch.setenv("CHUNK_OVERLAP", "120")
     get_settings.cache_clear()

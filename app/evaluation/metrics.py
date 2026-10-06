@@ -24,11 +24,23 @@ def document_recall_at_k(
     expected_document_ids: list[str],
 ) -> float:
     """命中的标注文档数除以标注文档数。重复命中同一文档只算一次。"""
-    expected = set(expected_document_ids)
-    if not expected:
-        raise ValueError("计算 Recall 时必须有标注文档")
-    found = set(retrieved_document_ids) & expected
-    return len(found) / len(expected)
+    return _recall(retrieved_document_ids, expected_document_ids, "标注文档")
+
+
+def recall_at_k(retrieved_ids: list[str], relevant_ids: list[str]) -> float:
+    """前若干条里命中的标注数除以全部标注数。只命中其中一个时不是 100%。"""
+    return _recall(retrieved_ids, relevant_ids, "标注")
+
+
+def precision_at_k(retrieved_ids: list[str], relevant_ids: list[str], k: int) -> float:
+    """前 K 个位置里相关结果的数量除以 K。没检索满 K 条时，空位不算相关。"""
+    if k < 1:
+        raise ValueError("K 必须大于 0")
+    relevant = set(relevant_ids)
+    if not relevant:
+        raise ValueError("计算 Precision 时必须有标注")
+    hits = sum(1 for item in retrieved_ids[:k] if item in relevant)
+    return hits / k
 
 
 def reciprocal_rank_at_k(
@@ -36,11 +48,30 @@ def reciprocal_rank_at_k(
     expected_document_ids: list[str],
 ) -> float:
     """第一条相关文档的名次倒数。前 K 条里没有相关文档时为 0。名次从 1 开始。"""
-    expected = set(expected_document_ids)
-    if not expected:
-        raise ValueError("计算 MRR 时必须有标注文档")
-    for rank, document_id in enumerate(retrieved_document_ids, start=1):
-        if document_id in expected:
+    return _mrr(retrieved_document_ids, expected_document_ids, "标注文档")
+
+
+def mrr_at_k(retrieved_ids: list[str], relevant_ids: list[str], k: int) -> float:
+    """只在前 K 条里找第一条相关结果。名次从 1 开始，没有命中时为 0。"""
+    if k < 1:
+        raise ValueError("K 必须大于 0")
+    return _mrr(retrieved_ids[:k], relevant_ids, "标注")
+
+
+def _recall(retrieved_ids: list[str], relevant_ids: list[str], label: str) -> float:
+    relevant = list(dict.fromkeys(relevant_ids))
+    if not relevant:
+        raise ValueError(f"计算 Recall 时必须有{label}")
+    found = set(retrieved_ids) & set(relevant)
+    return len(found) / len(relevant)
+
+
+def _mrr(retrieved_ids: list[str], relevant_ids: list[str], label: str) -> float:
+    relevant = set(relevant_ids)
+    if not relevant:
+        raise ValueError(f"计算 MRR 时必须有{label}")
+    for rank, item in enumerate(retrieved_ids, start=1):
+        if item in relevant:
             return 1.0 / rank
     return 0.0
 
